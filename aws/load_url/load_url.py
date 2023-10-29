@@ -1,6 +1,5 @@
 import json
 import os
-import uuid
 from base64 import urlsafe_b64decode
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -14,8 +13,8 @@ else:
     Input_Context = object
     Output = object
 
-kms = boto3.client(service_name="kms")
-ddb = boto3.resource("dynamodb")
+kms = boto3.client(service_name="kms") # type: ignore
+ddb = boto3.resource("dynamodb") # type: ignore
 redirect_table = ddb.Table(os.environ['DDB_TABLE_NAME'])
 
 class DebugError(BaseException):
@@ -30,10 +29,8 @@ def skip_on_debug(*exceptions: type[Exception]):
 def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
     try:
         destination:str = event["queryStringParameters"]["d"]
-        destination_error = False
     except skip_on_debug(KeyError, TypeError):
         destination = os.environ.setdefault('ERROR_DESTINATION','https://google.com')
-        destination_error = True
     
     try:
         ciphertext = event["queryStringParameters"]["v"]
@@ -49,8 +46,9 @@ def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
 
     except skip_on_debug() as e:
         plaintext = f"Error decrypting object. ERRMSG: {e}"
+
     try:
-        id = plaintext["id"]
+        id = plaintext["id"] # type: ignore
     except skip_on_debug():
         id = 'unable_to_parse_id'
 
