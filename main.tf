@@ -84,7 +84,7 @@ resource "aws_lambda_function" "create_url" {
 
   environment {
     variables = {
-      URL_PREFIX = var.URL_PREFIX
+      URL_PREFIX = "${var.protocol}://${var.domain}/${var.base_path}"
       KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
     }
   }
@@ -171,5 +171,28 @@ resource "aws_api_gateway_deployment" "redirect" {
 resource "aws_api_gateway_stage" "prod" {
   deployment_id = aws_api_gateway_deployment.redirect.id
   rest_api_id   = aws_api_gateway_rest_api.redirect.id
-  stage_name    = ""
+  stage_name    = "1"
+}
+
+resource "aws_route53_zone" "root" {
+  name = "${var.domain}."
+}
+
+resource "aws_acm_certificate" "cert" {
+  domain_name       = var.domain
+  validation_method = "DNS"
+}
+
+resource "aws_route53_record" "cert_validation" {
+  for_each = {for index, option in aws_acm_certificate.cert.domain_validation_options: option.resource_record_name => option}
+  name    = each.value.resource_record_name
+  type    = each.value.resource_record_type
+  zone_id = aws_route53_zone.root.id
+  records = [each.value.resource_record_value]
+  ttl     = 60
+}
+
+resource "aws_acm_certificate_validation" "cert" {
+  certificate_arn         = "${aws_acm_certificate.cert.arn}"
+  validation_record_fqdns = [for cv in aws_route53_record.cert_validation: cv.fqdn]
 }
