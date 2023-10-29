@@ -15,14 +15,20 @@ else:
     Output_Body = dict
 
 
-def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
-    kms = boto3.client(service_name="kms")
+kms = boto3.client(service_name="kms")
 
-    destination = event["queryStringParameters"]["destination"]
+def get_id(event:Input_Event):
     try:
         id = event["queryStringParameters"]["tracking_id"]
     except KeyError:
         id = uuid.uuid4()
+    return id
+
+def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
+    
+    destination = event["queryStringParameters"]["destination"]
+
+    id = get_id(event)
 
     msg = json.dumps({"d": destination, "id": str(id)}).encode()
 
@@ -32,10 +38,10 @@ def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
         EncryptionAlgorithm="SYMMETRIC_DEFAULT",
     )
 
-    verification = urlsafe_b64encode(response["CiphertextBlob"]).decode()
+    ciphertext = urlsafe_b64encode(response["CiphertextBlob"]).decode().rstrip("=")
 
     decode_check = kms.decrypt(CiphertextBlob=response["CiphertextBlob"])
-    full_url = f"{os.environ['URL_PREFIX']}/?v={verification}"
+    full_url = f"{os.environ['URL_PREFIX']}?d={destination}&v={ciphertext}"
 
     return {
         "statusCode": 200,
@@ -44,7 +50,7 @@ def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
                 "full_url": full_url,
                 "id": str(id),
                 "destination": destination,
-                "v": verification,
+                "ciphertext": ciphertext,
                 "d": json.loads(decode_check["Plaintext"].decode()),
             }))
     }
