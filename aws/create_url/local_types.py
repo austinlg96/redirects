@@ -21,7 +21,7 @@ Output_Body = TypedDict(
         "full_url": str,
         "id": str,
         "destination": str,
-        "v": str,
+        "ciphertext": str,
         "d": str,
     },
 )
