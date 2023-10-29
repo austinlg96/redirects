@@ -160,6 +160,32 @@ resource "aws_lambda_permission" "create_url_apigw" {
   source_arn = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.redirect.id}/*/${aws_api_gateway_method.get_redirect.http_method}${aws_api_gateway_resource.redirect.path}"
 }
 
+resource "aws_api_gateway_method" "post_redirect" {
+  rest_api_id   = aws_api_gateway_rest_api.redirect.id
+  resource_id   = aws_api_gateway_resource.redirect.id
+  http_method   = "POST"
+  authorization = "AWS_IAM"
+}
+
+resource "aws_api_gateway_integration" "create_url" {
+  rest_api_id             = aws_api_gateway_rest_api.redirect.id
+  resource_id             = aws_api_gateway_resource.redirect.id
+  http_method             = aws_api_gateway_method.post_redirect.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.create_url.invoke_arn
+}
+
+resource "aws_lambda_permission" "create_url_apigw" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.create_url.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  # TODO: Improve ARN
+  source_arn = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.redirect.id}/*/${aws_api_gateway_method.post_redirect.http_method}${aws_api_gateway_resource.redirect.path}"
+}
+
 resource "aws_api_gateway_deployment" "redirect" {
   rest_api_id = aws_api_gateway_rest_api.redirect.id
 
