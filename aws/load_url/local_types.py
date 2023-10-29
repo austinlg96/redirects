@@ -7,6 +7,7 @@ class _QS_Params(TypedDict, total=True):
 
 class QS_Params(_QS_Params, total=False):
     id: str
+    v: str
 
 
 class Input_Event(TypedDict):

@@ -86,6 +86,8 @@ resource "aws_lambda_function" "create_url" {
     variables = {
       URL_PREFIX = "${var.protocol}://${var.domain}/${var.base_path}"
       KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
+      DDB_TABLE_NAME = aws_dynamodb_table.redirects.name
+      DEBUGGING = "False"
     }
   }
 }
@@ -118,6 +120,8 @@ resource "aws_lambda_function" "load_url" {
   environment {
     variables = {
       KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
+      DDB_TABLE_NAME = aws_dynamodb_table.redirects.name
+      DEBUGGING = "False"
     }
   }
 }
@@ -140,7 +144,7 @@ resource "aws_api_gateway_method" "get_redirect" {
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "create_url" {
+resource "aws_api_gateway_integration" "load_url" {
   rest_api_id             = aws_api_gateway_rest_api.redirect.id
   resource_id             = aws_api_gateway_resource.redirect.id
   http_method             = aws_api_gateway_method.get_redirect.http_method
@@ -149,8 +153,7 @@ resource "aws_api_gateway_integration" "create_url" {
   uri                     = aws_lambda_function.load_url.invoke_arn
 }
 
-# Lambda
-resource "aws_lambda_permission" "create_url_apigw" {
+resource "aws_lambda_permission" "load_url_apigw" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.load_url.function_name
@@ -258,4 +261,56 @@ resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
   topic_arn = aws_sns_topic.page_request.arn
   protocol  = var.sns_sub_proto
   endpoint  = var.sns_sub_endpoint
+}
+
+resource "aws_dynamodb_table" "redirects" {
+  name           = "Redirects"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "HK"
+  range_key      = "SK"
+
+  attribute {
+    name = "HK"
+    type = "S"
+  }
+
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+}
+
+data "aws_iam_policy_document" "ddb_put" {
+  statement {
+    effect    = "Allow"
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.redirects.arn]
+  }
+}
+
+resource "aws_iam_policy" "ddb_put" {
+  name        = "DDB_Put"
+  description = "Allows writing redirects to the redirect table."
+  policy      = data.aws_iam_policy_document.ddb_put.json
+}
+
+resource "aws_iam_role_policy_attachment" "create_fn_ddb" {
+  role       = aws_iam_role.iam_for_create_url.name
+  policy_arn = aws_iam_policy.ddb_put.arn
+}
+
+resource "aws_iam_role_policy_attachment" "load_fn_ddb" {
+  role = aws_iam_role.iam_for_load_url.name
+  policy_arn = aws_iam_policy.ddb_put.arn
+}
+
+resource "local_file" "local_environment_settings" {
+  filename = "./.env"
+  content  =   <<-EOT
+        URL_PREFIX=${var.protocol}://${var.domain}/${var.base_path}
+        CREATE_URL_ARN=${aws_lambda_function.create_url.arn}
+        LOAD_URL_ARN=${aws_lambda_function.load_url.arn}
+        KMS_ENCRYPTION_KEY=${aws_kms_key.url_encryption_key.arn}
+        DDB_TABLE_NAME=${aws_dynamodb_table.redirects.name}
+        EOT
 }

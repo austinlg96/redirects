@@ -7,6 +7,7 @@ class _QS_Params(TypedDict, total=True):
 
 class QS_Params(_QS_Params, total=False):
     tracking_id: str
+    description: str
 
 
 class Input_Event(TypedDict):
@@ -22,7 +23,6 @@ Output_Body = TypedDict(
         "id": str,
         "destination": str,
         "ciphertext": str,
-        "d": str,
     },
 )
 
