@@ -1,5 +1,7 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_region" "current" {}
+
 resource "aws_kms_key" "url_encryption_key" {
   description             = "Key for encrypting and decrypting url data."
   deletion_window_in_days = 7
@@ -21,7 +23,7 @@ data "aws_iam_policy_document" "url_encryption_key_policy" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = [aws_iam_role.iam_for_lambda.arn]
+      identifiers = [aws_iam_role.iam_for_create_url.arn, aws_iam_role.iam_for_load_url.arn]
     }
     sid = "Allow use of the key."
 
@@ -41,6 +43,8 @@ resource "aws_kms_key_policy" "example" {
   policy = data.aws_iam_policy_document.url_encryption_key_policy.json
 }
 
+# Generic Lambda resources
+
 data "aws_iam_policy_document" "assume_role" {
   statement {
     effect = "Allow"
@@ -54,8 +58,10 @@ data "aws_iam_policy_document" "assume_role" {
   }
 }
 
-resource "aws_iam_role" "iam_for_lambda" {
-  name               = "iam_for_lambda"
+# Create URL Function
+
+resource "aws_iam_role" "iam_for_create_url" {
+  name               = "iam_for_create_url"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
@@ -69,7 +75,7 @@ data "archive_file" "create_url" {
 resource "aws_lambda_function" "create_url" {
   filename      = data.archive_file.create_url.output_path
   function_name = "create_url"
-  role          = aws_iam_role.iam_for_lambda.arn
+  role          = aws_iam_role.iam_for_create_url.arn
   handler       = "create_url.lambda_handler"
 
   source_code_hash = data.archive_file.create_url.output_base64sha256
@@ -82,4 +88,88 @@ resource "aws_lambda_function" "create_url" {
       KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
     }
   }
+}
+
+
+# Load URL Function
+
+resource "aws_iam_role" "iam_for_load_url" {
+  name               = "iam_for_load_url"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+}
+
+data "archive_file" "load_url" {
+  type        = "zip"
+  source_dir = "./aws/load_url"
+  excludes = ["./aws/load_url/__pycache__/","./aws/load_url/local_types.py"]
+  output_path = "./build/load_url.zip"
+}
+
+resource "aws_lambda_function" "load_url" {
+  filename      = data.archive_file.load_url.output_path
+  function_name = "load_url"
+  role          = aws_iam_role.iam_for_load_url.arn
+  handler       = "load_url.lambda_handler"
+
+  source_code_hash = data.archive_file.load_url.output_base64sha256
+
+  runtime = "python3.11"
+
+  environment {
+    variables = {
+      KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
+    }
+  }
+}
+
+# API Gateway
+resource "aws_api_gateway_rest_api" "redirect" {
+  name = "URL Redirect"
+}
+
+resource "aws_api_gateway_resource" "redirect" {
+  path_part   = "redirect"
+  parent_id   = aws_api_gateway_rest_api.redirect.root_resource_id
+  rest_api_id = aws_api_gateway_rest_api.redirect.id
+}
+
+resource "aws_api_gateway_method" "get_redirect" {
+  rest_api_id   = aws_api_gateway_rest_api.redirect.id
+  resource_id   = aws_api_gateway_resource.redirect.id
+  http_method   = "GET"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "create_url" {
+  rest_api_id             = aws_api_gateway_rest_api.redirect.id
+  resource_id             = aws_api_gateway_resource.redirect.id
+  http_method             = aws_api_gateway_method.get_redirect.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.load_url.invoke_arn
+}
+
+# Lambda
+resource "aws_lambda_permission" "create_url_apigw" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.load_url.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  # TODO: Improve ARN
+  source_arn = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.redirect.id}/*/${aws_api_gateway_method.get_redirect.http_method}${aws_api_gateway_resource.redirect.path}"
+}
+
+resource "aws_api_gateway_deployment" "redirect" {
+  rest_api_id = aws_api_gateway_rest_api.redirect.id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "prod" {
+  deployment_id = aws_api_gateway_deployment.redirect.id
+  rest_api_id   = aws_api_gateway_rest_api.redirect.id
+  stage_name    = ""
 }
