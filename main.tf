@@ -223,3 +223,13 @@ resource "aws_api_gateway_base_path_mapping" "main" {
   stage_name  = aws_api_gateway_stage.prod.stage_name
   domain_name = aws_api_gateway_domain_name.root.domain_name
 }
+
+resource "aws_sns_topic" "page_request" {
+  name = "redirect-page-request-topic"
+}
+
+resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
+  topic_arn = aws_sns_topic.page_request.arn
+  protocol  = var.sns_sub_proto
+  endpoint  = var.sns_sub_endpoint
+}
