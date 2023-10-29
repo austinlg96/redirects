@@ -196,3 +196,30 @@ resource "aws_acm_certificate_validation" "cert" {
   certificate_arn         = "${aws_acm_certificate.cert.arn}"
   validation_record_fqdns = [for cv in aws_route53_record.cert_validation: cv.fqdn]
 }
+
+resource "aws_api_gateway_domain_name" "root" {
+  regional_certificate_arn = aws_acm_certificate_validation.cert.certificate_arn
+  domain_name     = var.domain
+
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+}
+
+resource "aws_route53_record" "root" {
+  name    = aws_api_gateway_domain_name.root.domain_name
+  type    = "A"
+  zone_id = aws_route53_zone.root.id
+
+  alias {
+    evaluate_target_health = true
+    name                   = aws_api_gateway_domain_name.root.regional_domain_name
+    zone_id                = aws_api_gateway_domain_name.root.regional_zone_id
+  }
+}
+
+resource "aws_api_gateway_base_path_mapping" "main" {
+  api_id      = aws_api_gateway_rest_api.redirect.id
+  stage_name  = aws_api_gateway_stage.prod.stage_name
+  domain_name = aws_api_gateway_domain_name.root.domain_name
+}
