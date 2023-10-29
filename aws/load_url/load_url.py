@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from base64 import urlsafe_b64decode
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import boto3
@@ -45,14 +46,19 @@ def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
         ciphertext = ciphertext + "=" * pad
         ciphertextblob = urlsafe_b64decode(ciphertext)
         plaintext = json.loads(kms.decrypt(CiphertextBlob=ciphertextblob)["Plaintext"])
+
     except skip_on_debug() as e:
         plaintext = f"Error decrypting object. ERRMSG: {e}"
-        
+    try:
+        id = plaintext["id"]
+    except skip_on_debug():
+        id = 'unable_to_parse_id'
+
     try:
         redirect_table.put_item(
                 Item = {
-                    'HK': f"link_usage-{uuid.uuid4()}",
-                    'SK': destination if not destination_error else "error_identifying_destination",
+                    'HK': f"link_usage-{id}",
+                    'SK': datetime.utcnow().isoformat(),
                     'event': event,
                     'decrypted_params': plaintext,
                     'context': {str(k):str(v) for k,v in getattr(context,'__dict__',{}).items()}
