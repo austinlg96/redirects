@@ -122,6 +122,7 @@ resource "aws_lambda_function" "load_url" {
       KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
       DDB_TABLE_NAME = aws_dynamodb_table.redirects.name
       DEBUGGING = "False"
+      ERROR_DESTINATION = var.error_destination
     }
   }
 }
@@ -189,6 +190,25 @@ resource "aws_lambda_permission" "create_url_apigw" {
   source_arn = "arn:aws:execute-api:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:${aws_api_gateway_rest_api.redirect.id}/*/${aws_api_gateway_method.post_redirect.http_method}${aws_api_gateway_resource.redirect.path}"
 }
 
+resource "aws_api_gateway_gateway_response" "default_4xx" {
+  status_code = 307
+  rest_api_id         = aws_api_gateway_rest_api.redirect.id
+  response_type       = "DEFAULT_4XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Location": "'${var.error_destination}'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "default_5xx" {
+  status_code = 307
+  rest_api_id         = aws_api_gateway_rest_api.redirect.id
+  response_type       = "DEFAULT_5XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Location": "'${var.error_destination}'"
+  }
+}
 resource "aws_api_gateway_deployment" "redirect" {
   rest_api_id = aws_api_gateway_rest_api.redirect.id
 

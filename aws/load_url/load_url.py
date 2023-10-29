@@ -32,7 +32,7 @@ def lambda_handler(event: Input_Event, context: Input_Context) -> Output:
         destination:str = event["queryStringParameters"]["d"]
         destination_error = False
     except skip_on_debug(KeyError, TypeError):
-        destination = "https://google.com"
+        destination = os.environ.setdefault('ERROR_DESTINATION','https://google.com')
         destination_error = True
     
     try:

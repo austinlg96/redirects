@@ -20,3 +20,7 @@ variable "sns_sub_proto" {
 variable "sns_sub_endpoint" {
   type = string
 }
+
+variable "error_destination" {
+  type = string
+}
