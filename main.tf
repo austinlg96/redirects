@@ -92,7 +92,6 @@ resource "aws_lambda_function" "create_url" {
   }
 }
 
-
 # Load URL Function
 
 resource "aws_iam_role" "iam_for_load_url" {
@@ -106,6 +105,39 @@ data "archive_file" "load_url" {
   excludes = ["./aws/load_url/__pycache__/","./aws/load_url/local_types.py"]
   output_path = "./build/load_url.zip"
 }
+
+# Publish Msg Function
+
+resource "aws_iam_role" "iam_for_publish_msg" {
+  name               = "iam_for_publish_msg"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+}
+
+data "archive_file" "publish_msg" {
+  type        = "zip"
+  source_dir = "./aws/publish_msg"
+  excludes = ["./aws/publish_msg/__pycache__/","./aws/publish_msg/local_types.py"]
+  output_path = "./build/publish_msg.zip"
+}
+
+resource "aws_lambda_function" "publish_msg" {
+  filename      = data.archive_file.publish_msg.output_path
+  function_name = "publish_msg"
+  role          = aws_iam_role.iam_for_publish_msg.arn
+  handler       = "publish_msg.lambda_handler"
+
+  source_code_hash = data.archive_file.publish_msg.output_base64sha256
+
+  runtime = "python3.11"
+
+  environment {
+    variables = {
+      DEBUGGING = "False"
+      SNS_TOPIC_ARN = aws_sns_topic.page_request.arn
+    }
+  }
+}
+
 
 resource "aws_lambda_function" "load_url" {
   filename      = data.archive_file.load_url.output_path
@@ -288,6 +320,8 @@ resource "aws_dynamodb_table" "redirects" {
   billing_mode   = "PAY_PER_REQUEST"
   hash_key       = "HK"
   range_key      = "SK"
+  stream_enabled = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
     name = "HK"
@@ -333,4 +367,60 @@ resource "local_file" "local_environment_settings" {
         KMS_ENCRYPTION_KEY=${aws_kms_key.url_encryption_key.arn}
         DDB_TABLE_NAME=${aws_dynamodb_table.redirects.name}
         EOT
+}
+
+
+data "aws_iam_policy_document" "ddb_stream_read" {
+  statement {
+    effect    = "Allow"
+    actions   = [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+                "dynamodb:DescribeStream",
+                "dynamodb:ListStreams"
+            ]
+    resources = [aws_dynamodb_table.redirects.stream_arn]
+  }
+}
+
+resource "aws_iam_policy" "ddb_stream_read" {
+  name        = "DDB_Stream_Read"
+  description = "Allows reading the redirect table's stream."
+  policy      = data.aws_iam_policy_document.ddb_stream_read.json
+}
+
+resource "aws_iam_role_policy_attachment" "publish_msg_ddb_stream" {
+  role       = aws_iam_role.iam_for_publish_msg.name
+  policy_arn = aws_iam_policy.ddb_stream_read.arn
+}
+
+resource "aws_lambda_event_source_mapping" "ddb_to_publish_msg" {
+  event_source_arn  = aws_dynamodb_table.redirects.stream_arn
+  function_name     = aws_lambda_function.publish_msg.arn
+  starting_position = "LATEST"
+
+  depends_on = [
+    aws_iam_role_policy_attachment.publish_msg_ddb_stream
+  ]
+}
+
+data "aws_iam_policy_document" "sns_pub" {
+  statement {
+    effect    = "Allow"
+    actions   = [
+                "SNS:Publish"
+            ]
+    resources = [aws_sns_topic.page_request.arn]
+  }
+}
+
+resource "aws_iam_policy" "sns_pub" {
+  name        = "SNS_Pub"
+  description = "Allows publishing to the SNS stream."
+  policy      = data.aws_iam_policy_document.sns_pub.json
+}
+
+resource "aws_iam_role_policy_attachment" "publish_msg_sns_topic" {
+  role       = aws_iam_role.iam_for_publish_msg.name
+  policy_arn = aws_iam_policy.sns_pub.arn
 }
