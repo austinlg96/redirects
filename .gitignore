@@ -1,0 +1,12 @@
+# dirs
+build
+__pycache__
+
+# extensions
+*.pyc
+*.tfstate
+*.tfstate.backup
+
+# files
+.env
+.DS_Store
