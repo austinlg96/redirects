@@ -62,7 +62,7 @@ resource "aws_iam_role" "iam_for_lambda" {
 data "archive_file" "create_url" {
   type        = "zip"
   source_dir = "./aws/create_url"
-  excludes = ["./aws/create_url/__pycache__/*"]
+  excludes = ["./aws/create_url/__pycache__/","./aws/create_url/local_types.py"]
   output_path = "./build/create_url.zip"
 }
 
