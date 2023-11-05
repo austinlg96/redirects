@@ -3,123 +3,42 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 module "kms" {
   source       = "./modules/kms_encryption"
-  encrypt_arns = [aws_iam_role.iam_for_create_url.arn]
-  decrypt_arns = [aws_iam_role.iam_for_load_url.arn]
+  encrypt_arns = [module.create_url.role.arn]
+  decrypt_arns = [module.load_url.role.arn]
 }
-
-# Generic Lambda resources
-
-data "aws_iam_policy_document" "assume_role" {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-
-    actions = ["sts:AssumeRole"]
+module "create_url" {
+  source         = "./modules/lambda"
+  name           = "create_url"
+  excluded_files = ["__pycache__/", "local_types.py"]
+  handler        = "create_url.lambda_handler"
+  environment_vars = {
+    URL_PREFIX         = "${var.protocol}://${var.domain}/${var.base_path}"
+    KMS_ENCRYPTION_KEY = module.kms.key_arn
+    DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
+    DEBUGGING          = "False"
+  }
+}
+module "load_url" {
+  source         = "./modules/lambda"
+  name           = "load_url"
+  excluded_files = ["__pycache__/", "local_types.py"]
+  handler        = "load_url.lambda_handler"
+  environment_vars = {
+    KMS_ENCRYPTION_KEY = module.kms.key_arn
+    DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
+    DEBUGGING          = "False"
+    ERROR_DESTINATION  = var.error_destination
   }
 }
 
-# Create URL Function
-
-resource "aws_iam_role" "iam_for_create_url" {
-  name               = "iam_for_create_url"
-  assume_role_policy = data.aws_iam_policy_document.assume_role.json
-}
-
-data "archive_file" "create_url" {
-  type        = "zip"
-  source_dir  = "./aws/create_url"
-  excludes    = ["./aws/create_url/__pycache__/", "./aws/create_url/local_types.py"]
-  output_path = "./build/create_url.zip"
-}
-
-resource "aws_lambda_function" "create_url" {
-  filename      = data.archive_file.create_url.output_path
-  function_name = "create_url"
-  role          = aws_iam_role.iam_for_create_url.arn
-  handler       = "create_url.lambda_handler"
-
-  source_code_hash = data.archive_file.create_url.output_base64sha256
-
-  runtime = "python3.11"
-
-  environment {
-    variables = {
-      URL_PREFIX         = "${var.protocol}://${var.domain}/${var.base_path}"
-      KMS_ENCRYPTION_KEY = module.kms.key_arn
-      DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
-      DEBUGGING          = "False"
-    }
-  }
-}
-
-# Load URL Function
-
-resource "aws_iam_role" "iam_for_load_url" {
-  name               = "iam_for_load_url"
-  assume_role_policy = data.aws_iam_policy_document.assume_role.json
-}
-
-data "archive_file" "load_url" {
-  type        = "zip"
-  source_dir  = "./aws/load_url"
-  excludes    = ["./aws/load_url/__pycache__/", "./aws/load_url/local_types.py"]
-  output_path = "./build/load_url.zip"
-}
-
-# Publish Msg Function
-
-resource "aws_iam_role" "iam_for_publish_msg" {
-  name               = "iam_for_publish_msg"
-  assume_role_policy = data.aws_iam_policy_document.assume_role.json
-}
-
-data "archive_file" "publish_msg" {
-  type        = "zip"
-  source_dir  = "./aws/publish_msg"
-  excludes    = ["./aws/publish_msg/__pycache__/", "./aws/publish_msg/local_types.py"]
-  output_path = "./build/publish_msg.zip"
-}
-
-resource "aws_lambda_function" "publish_msg" {
-  filename      = data.archive_file.publish_msg.output_path
-  function_name = "publish_msg"
-  role          = aws_iam_role.iam_for_publish_msg.arn
-  handler       = "publish_msg.lambda_handler"
-
-  source_code_hash = data.archive_file.publish_msg.output_base64sha256
-
-  runtime = "python3.11"
-
-  environment {
-    variables = {
-      DEBUGGING     = "False"
-      SNS_TOPIC_ARN = aws_sns_topic.page_request.arn
-    }
-  }
-}
-
-
-resource "aws_lambda_function" "load_url" {
-  filename      = data.archive_file.load_url.output_path
-  function_name = "load_url"
-  role          = aws_iam_role.iam_for_load_url.arn
-  handler       = "load_url.lambda_handler"
-
-  source_code_hash = data.archive_file.load_url.output_base64sha256
-
-  runtime = "python3.11"
-
-  environment {
-    variables = {
-      KMS_ENCRYPTION_KEY = module.kms.key_arn
-      DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
-      DEBUGGING          = "False"
-      ERROR_DESTINATION  = var.error_destination
-    }
+module "publish_msg" {
+  source         = "./modules/lambda"
+  name           = "publish_msg"
+  excluded_files = ["local_types.py"]
+  handler        = "publish_msg.lambda_handler"
+  environment_vars = {
+    DEBUGGING     = "False"
+    SNS_TOPIC_ARN = aws_sns_topic.page_request.arn
   }
 }
 
@@ -147,13 +66,13 @@ resource "aws_api_gateway_integration" "load_url" {
   http_method             = aws_api_gateway_method.get_redirect.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.load_url.invoke_arn
+  uri                     = module.load_url.function.invoke_arn
 }
 
 resource "aws_lambda_permission" "load_url_apigw" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.load_url.function_name
+  function_name = module.load_url.function.function_name
   principal     = "apigateway.amazonaws.com"
 
   # TODO: Improve ARN
@@ -173,13 +92,13 @@ resource "aws_api_gateway_integration" "create_url" {
   http_method             = aws_api_gateway_method.post_redirect.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.create_url.invoke_arn
+  uri                     = module.create_url.function.invoke_arn
 }
 
 resource "aws_lambda_permission" "create_url_apigw" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.create_url.function_name
+  function_name = module.create_url.function.function_name
   principal     = "apigateway.amazonaws.com"
 
   # TODO: Improve ARN
@@ -313,12 +232,12 @@ resource "aws_iam_policy" "ddb_put" {
 }
 
 resource "aws_iam_role_policy_attachment" "create_fn_ddb" {
-  role       = aws_iam_role.iam_for_create_url.name
+  role       = module.create_url.role.name
   policy_arn = aws_iam_policy.ddb_put.arn
 }
 
 resource "aws_iam_role_policy_attachment" "load_fn_ddb" {
-  role       = aws_iam_role.iam_for_load_url.name
+  role       = module.load_url.role.name
   policy_arn = aws_iam_policy.ddb_put.arn
 }
 
@@ -326,8 +245,8 @@ resource "local_file" "local_environment_settings" {
   filename = "./.env"
   content  = <<-EOT
         URL_PREFIX=${var.protocol}://${var.domain}/${var.base_path}
-        CREATE_URL_ARN=${aws_lambda_function.create_url.arn}
-        LOAD_URL_ARN=${aws_lambda_function.load_url.arn}
+        CREATE_URL_ARN=${module.create_url.function.arn}
+        LOAD_URL_ARN=${module.load_url.function.arn}
         KMS_ENCRYPTION_KEY=${module.kms.key_arn}
         DDB_TABLE_NAME=${aws_dynamodb_table.redirects.name}
         EOT
@@ -354,13 +273,13 @@ resource "aws_iam_policy" "ddb_stream_read" {
 }
 
 resource "aws_iam_role_policy_attachment" "publish_msg_ddb_stream" {
-  role       = aws_iam_role.iam_for_publish_msg.name
+  role       = module.publish_msg.role.name
   policy_arn = aws_iam_policy.ddb_stream_read.arn
 }
 
 resource "aws_lambda_event_source_mapping" "ddb_to_publish_msg" {
   event_source_arn  = aws_dynamodb_table.redirects.stream_arn
-  function_name     = aws_lambda_function.publish_msg.arn
+  function_name     = module.publish_msg.function.arn
   starting_position = "LATEST"
 
   depends_on = [
@@ -385,6 +304,6 @@ resource "aws_iam_policy" "sns_pub" {
 }
 
 resource "aws_iam_role_policy_attachment" "publish_msg_sns_topic" {
-  role       = aws_iam_role.iam_for_publish_msg.name
+  role       = module.publish_msg.role.name
   policy_arn = aws_iam_policy.sns_pub.arn
 }
