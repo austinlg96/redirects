@@ -1,4 +1,4 @@
-variable "name" {
+variable "table_name" {
   type = string
 }
 

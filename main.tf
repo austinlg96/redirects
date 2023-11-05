@@ -260,7 +260,7 @@ module "acm" {
 
 module "ddb" {
   source                  = "./modules/ddb"
-  name                    = "Requests"
+  table_name              = "${local.name_prefix}-table"
   put_item_role_names     = [module.load_url.role.name, module.create_url.role.name]
   stream_table_role_names = [module.publish_msg.role.name]
 }

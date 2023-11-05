@@ -1,5 +1,5 @@
 resource "aws_dynamodb_table" "main" {
-  name             = var.name
+  name             = var.table_name
   billing_mode     = "PAY_PER_REQUEST"
   hash_key         = "HK"
   range_key        = "SK"
@@ -23,7 +23,7 @@ resource "aws_dynamodb_table" "main" {
 
 module "put_item_perms" {
   source      = "../policy_attachment"
-  name        = "DDB_Put"
+  name        = "put_item-${var.table_name}"
   description = "Allows adding items to the table."
   role_names  = var.put_item_role_names
   statements = [
@@ -37,7 +37,7 @@ module "put_item_perms" {
 
 module "stream_table_perms" {
   source      = "../policy_attachment"
-  name        = "DDB_Stream_Read"
+  name        = "stream_read-${var.table_name}"
   description = "Allows streaming the table changes."
   role_names  = var.stream_table_role_names
   statements = [
