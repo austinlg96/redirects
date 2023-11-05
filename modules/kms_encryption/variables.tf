@@ -1,4 +1,8 @@
-variable "region" {
+variable "name_prefix" {
+  type = string
+}
+
+variable "key_description" {
   type    = string
   default = null
 }

@@ -18,6 +18,7 @@ locals {
 
   default_tags = merge(var.use_base_default_tags ? local.base_default_tags : {}, var.custom_default_tags)
 
+  name_prefix = "${var.project_name}-${var.class}-${var.environment}"
 }
 
 provider "aws" {
@@ -31,11 +32,14 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
+
 module "kms" {
   source       = "./modules/kms_encryption"
+  name_prefix  = local.name_prefix
   encrypt_arns = [module.create_url.role.arn]
   decrypt_arns = [module.load_url.role.arn]
 }
+
 module "create_url" {
   source         = "./modules/lambda"
   name           = "create_url"
