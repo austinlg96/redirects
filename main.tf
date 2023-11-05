@@ -159,6 +159,7 @@ resource "aws_api_gateway_gateway_response" "default_5xx" {
 resource "aws_api_gateway_deployment" "redirect" {
   rest_api_id = aws_api_gateway_rest_api.redirect.id
 
+  depends_on = [aws_api_gateway_integration.create_url, aws_api_gateway_integration.load_url]
   lifecycle {
     create_before_destroy = true
   }
