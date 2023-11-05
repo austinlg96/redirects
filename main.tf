@@ -35,14 +35,15 @@ data "aws_region" "current" {}
 
 module "kms" {
   source       = "./modules/kms_encryption"
-  name_prefix  = local.name_prefix
+  name_prefix  = "${local.name_prefix}-datakey"
   encrypt_arns = [module.create_url.role.arn]
   decrypt_arns = [module.load_url.role.arn]
 }
 
 module "create_url" {
   source         = "./modules/lambda"
-  name           = "create_url"
+  name_prefix    = local.name_prefix
+  friendly_name  = "create_url"
   excluded_files = ["__pycache__/", "local_types.py"]
   handler        = "create_url.lambda_handler"
   environment_vars = {
@@ -54,7 +55,8 @@ module "create_url" {
 }
 module "load_url" {
   source         = "./modules/lambda"
-  name           = "load_url"
+  name_prefix    = local.name_prefix
+  friendly_name  = "load_url"
   excluded_files = ["__pycache__/", "local_types.py"]
   handler        = "load_url.lambda_handler"
   environment_vars = {
@@ -67,7 +69,8 @@ module "load_url" {
 
 module "publish_msg" {
   source         = "./modules/lambda"
-  name           = "publish_msg"
+  name_prefix    = local.name_prefix
+  friendly_name  = "publish_msg"
   excluded_files = ["local_types.py"]
   handler        = "publish_msg.lambda_handler"
   environment_vars = {

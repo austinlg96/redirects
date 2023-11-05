@@ -1,6 +1,11 @@
-variable "name" {
+variable "name_prefix" {
   type        = string
-  description = "The name of the lambda function. Also used by default for the source code and build paths."
+  description = "The name_prefix from the parent module. Used to generate the function name."
+  default     = ""
+}
+variable "friendly_name" {
+  type        = string
+  description = "The local name of the lambda function. Also used by default for the source code path, build path, and as part of the function name."
 }
 
 variable "excluded_files" {

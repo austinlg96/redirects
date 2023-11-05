@@ -1,7 +1,8 @@
 locals {
   default_lambda_dir = "./aws/"
-  source_dir         = var.source_dir != null ? var.source_dir : "${local.default_lambda_dir}/${var.name}"
-  build_path         = var.build_path != null ? var.build_path : "./build/lambda/${var.name}.zip"
+  source_dir         = var.source_dir != null ? var.source_dir : "${local.default_lambda_dir}/${var.friendly_name}"
+  build_path         = var.build_path != null ? var.build_path : "./build/lambda/${var.friendly_name}.zip"
+  function_name      = var.name_prefix != "" ? "${var.name_prefix}-${var.friendly_name}" : var.friendly_name
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -18,7 +19,7 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 resource "aws_iam_role" "main" {
-  name               = "iam_for_${var.name}"
+  name               = "role_for_${local.function_name}"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
@@ -31,7 +32,7 @@ data "archive_file" "source" {
 
 resource "aws_lambda_function" "main" {
   filename      = data.archive_file.source.output_path
-  function_name = var.name
+  function_name = local.function_name
   role          = aws_iam_role.main.arn
   handler       = var.handler
 
