@@ -1,46 +1,10 @@
 data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
-
-resource "aws_kms_key" "url_encryption_key" {
-  description             = "Key for encrypting and decrypting url data."
-  deletion_window_in_days = 7
-}
-
-data "aws_iam_policy_document" "url_encryption_key_policy" {
-
-  statement {
-    effect = "Allow"
-    principals {
-        type = "AWS"
-        identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root", data.aws_caller_identity.current.arn]
-    }
-    sid = "Allow all for root."
-    actions = ["kms:*"]
-    resources = ["*"]
-  }
-  statement {
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = [aws_iam_role.iam_for_create_url.arn, aws_iam_role.iam_for_load_url.arn]
-    }
-    sid = "Allow use of the key."
-
-    actions = [
-      "kms:Decrypt",
-      "kms:Encrypt",
-    ]
-
-    resources = [
-      "*",
-    ]
-  }
-}
-
-resource "aws_kms_key_policy" "example" {
-  key_id = aws_kms_key.url_encryption_key.id
-  policy = data.aws_iam_policy_document.url_encryption_key_policy.json
+module "kms" {
+  source       = "./modules/kms_encryption"
+  encrypt_arns = [aws_iam_role.iam_for_create_url.arn]
+  decrypt_arns = [aws_iam_role.iam_for_load_url.arn]
 }
 
 # Generic Lambda resources
@@ -67,8 +31,8 @@ resource "aws_iam_role" "iam_for_create_url" {
 
 data "archive_file" "create_url" {
   type        = "zip"
-  source_dir = "./aws/create_url"
-  excludes = ["./aws/create_url/__pycache__/","./aws/create_url/local_types.py"]
+  source_dir  = "./aws/create_url"
+  excludes    = ["./aws/create_url/__pycache__/", "./aws/create_url/local_types.py"]
   output_path = "./build/create_url.zip"
 }
 
@@ -84,10 +48,10 @@ resource "aws_lambda_function" "create_url" {
 
   environment {
     variables = {
-      URL_PREFIX = "${var.protocol}://${var.domain}/${var.base_path}"
-      KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
-      DDB_TABLE_NAME = aws_dynamodb_table.redirects.name
-      DEBUGGING = "False"
+      URL_PREFIX         = "${var.protocol}://${var.domain}/${var.base_path}"
+      KMS_ENCRYPTION_KEY = module.kms.key_arn
+      DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
+      DEBUGGING          = "False"
     }
   }
 }
@@ -101,8 +65,8 @@ resource "aws_iam_role" "iam_for_load_url" {
 
 data "archive_file" "load_url" {
   type        = "zip"
-  source_dir = "./aws/load_url"
-  excludes = ["./aws/load_url/__pycache__/","./aws/load_url/local_types.py"]
+  source_dir  = "./aws/load_url"
+  excludes    = ["./aws/load_url/__pycache__/", "./aws/load_url/local_types.py"]
   output_path = "./build/load_url.zip"
 }
 
@@ -115,8 +79,8 @@ resource "aws_iam_role" "iam_for_publish_msg" {
 
 data "archive_file" "publish_msg" {
   type        = "zip"
-  source_dir = "./aws/publish_msg"
-  excludes = ["./aws/publish_msg/__pycache__/","./aws/publish_msg/local_types.py"]
+  source_dir  = "./aws/publish_msg"
+  excludes    = ["./aws/publish_msg/__pycache__/", "./aws/publish_msg/local_types.py"]
   output_path = "./build/publish_msg.zip"
 }
 
@@ -132,7 +96,7 @@ resource "aws_lambda_function" "publish_msg" {
 
   environment {
     variables = {
-      DEBUGGING = "False"
+      DEBUGGING     = "False"
       SNS_TOPIC_ARN = aws_sns_topic.page_request.arn
     }
   }
@@ -151,10 +115,10 @@ resource "aws_lambda_function" "load_url" {
 
   environment {
     variables = {
-      KMS_ENCRYPTION_KEY = aws_kms_key.url_encryption_key.arn
-      DDB_TABLE_NAME = aws_dynamodb_table.redirects.name
-      DEBUGGING = "False"
-      ERROR_DESTINATION = var.error_destination
+      KMS_ENCRYPTION_KEY = module.kms.key_arn
+      DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
+      DEBUGGING          = "False"
+      ERROR_DESTINATION  = var.error_destination
     }
   }
 }
@@ -223,22 +187,22 @@ resource "aws_lambda_permission" "create_url_apigw" {
 }
 
 resource "aws_api_gateway_gateway_response" "default_4xx" {
-  status_code = 307
-  rest_api_id         = aws_api_gateway_rest_api.redirect.id
-  response_type       = "DEFAULT_4XX"
+  status_code   = 307
+  rest_api_id   = aws_api_gateway_rest_api.redirect.id
+  response_type = "DEFAULT_4XX"
 
   response_parameters = {
-    "gatewayresponse.header.Location": "'${var.error_destination}'"
+    "gatewayresponse.header.Location" : "'${var.error_destination}'"
   }
 }
 
 resource "aws_api_gateway_gateway_response" "default_5xx" {
-  status_code = 307
-  rest_api_id         = aws_api_gateway_rest_api.redirect.id
-  response_type       = "DEFAULT_5XX"
+  status_code   = 307
+  rest_api_id   = aws_api_gateway_rest_api.redirect.id
+  response_type = "DEFAULT_5XX"
 
   response_parameters = {
-    "gatewayresponse.header.Location": "'${var.error_destination}'"
+    "gatewayresponse.header.Location" : "'${var.error_destination}'"
   }
 }
 resource "aws_api_gateway_deployment" "redirect" {
@@ -265,22 +229,22 @@ resource "aws_acm_certificate" "cert" {
 }
 
 resource "aws_route53_record" "cert_validation" {
-  for_each = {for index, option in aws_acm_certificate.cert.domain_validation_options: option.resource_record_name => option}
-  name    = each.value.resource_record_name
-  type    = each.value.resource_record_type
-  zone_id = aws_route53_zone.root.id
-  records = [each.value.resource_record_value]
-  ttl     = 60
+  for_each = { for index, option in aws_acm_certificate.cert.domain_validation_options : option.resource_record_name => option }
+  name     = each.value.resource_record_name
+  type     = each.value.resource_record_type
+  zone_id  = aws_route53_zone.root.id
+  records  = [each.value.resource_record_value]
+  ttl      = 60
 }
 
 resource "aws_acm_certificate_validation" "cert" {
-  certificate_arn         = "${aws_acm_certificate.cert.arn}"
-  validation_record_fqdns = [for cv in aws_route53_record.cert_validation: cv.fqdn]
+  certificate_arn         = aws_acm_certificate.cert.arn
+  validation_record_fqdns = [for cv in aws_route53_record.cert_validation : cv.fqdn]
 }
 
 resource "aws_api_gateway_domain_name" "root" {
   regional_certificate_arn = aws_acm_certificate_validation.cert.certificate_arn
-  domain_name     = var.domain
+  domain_name              = var.domain
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -316,11 +280,11 @@ resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
 }
 
 resource "aws_dynamodb_table" "redirects" {
-  name           = "Redirects"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "HK"
-  range_key      = "SK"
-  stream_enabled = true
+  name             = "Redirects"
+  billing_mode     = "PAY_PER_REQUEST"
+  hash_key         = "HK"
+  range_key        = "SK"
+  stream_enabled   = true
   stream_view_type = "NEW_AND_OLD_IMAGES"
 
   attribute {
@@ -354,17 +318,17 @@ resource "aws_iam_role_policy_attachment" "create_fn_ddb" {
 }
 
 resource "aws_iam_role_policy_attachment" "load_fn_ddb" {
-  role = aws_iam_role.iam_for_load_url.name
+  role       = aws_iam_role.iam_for_load_url.name
   policy_arn = aws_iam_policy.ddb_put.arn
 }
 
 resource "local_file" "local_environment_settings" {
   filename = "./.env"
-  content  =   <<-EOT
+  content  = <<-EOT
         URL_PREFIX=${var.protocol}://${var.domain}/${var.base_path}
         CREATE_URL_ARN=${aws_lambda_function.create_url.arn}
         LOAD_URL_ARN=${aws_lambda_function.load_url.arn}
-        KMS_ENCRYPTION_KEY=${aws_kms_key.url_encryption_key.arn}
+        KMS_ENCRYPTION_KEY=${module.kms.key_arn}
         DDB_TABLE_NAME=${aws_dynamodb_table.redirects.name}
         EOT
 }
@@ -372,13 +336,13 @@ resource "local_file" "local_environment_settings" {
 
 data "aws_iam_policy_document" "ddb_stream_read" {
   statement {
-    effect    = "Allow"
-    actions   = [
-                "dynamodb:GetRecords",
-                "dynamodb:GetShardIterator",
-                "dynamodb:DescribeStream",
-                "dynamodb:ListStreams"
-            ]
+    effect = "Allow"
+    actions = [
+      "dynamodb:GetRecords",
+      "dynamodb:GetShardIterator",
+      "dynamodb:DescribeStream",
+      "dynamodb:ListStreams"
+    ]
     resources = [aws_dynamodb_table.redirects.stream_arn]
   }
 }
@@ -406,10 +370,10 @@ resource "aws_lambda_event_source_mapping" "ddb_to_publish_msg" {
 
 data "aws_iam_policy_document" "sns_pub" {
   statement {
-    effect    = "Allow"
-    actions   = [
-                "SNS:Publish"
-            ]
+    effect = "Allow"
+    actions = [
+      "SNS:Publish"
+    ]
     resources = [aws_sns_topic.page_request.arn]
   }
 }
