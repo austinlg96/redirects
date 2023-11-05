@@ -8,6 +8,8 @@ locals {
   default_tags = merge(var.use_base_default_tags ? local.base_default_tags : {}, var.custom_default_tags)
 
   name_prefix = "${var.project_name}-${var.class}-${var.environment}"
+
+  full_domain = var.project_subdomain != null ? "${var.project_subdomain}.${var.base_domain}" : var.base_domain
 }
 
 provider "aws" {
@@ -36,7 +38,7 @@ module "create_url" {
   excluded_files = ["__pycache__/", "local_types.py"]
   handler        = "create_url.lambda_handler"
   environment_vars = {
-    URL_PREFIX         = "${var.protocol}://${var.domain}/${var.base_path}"
+    URL_PREFIX         = "${var.protocol}://${local.full_domain}/${var.base_path}"
     KMS_ENCRYPTION_KEY = module.kms.key_arn
     DDB_TABLE_NAME     = module.ddb.table.name
     DEBUGGING          = "False"
@@ -173,12 +175,12 @@ resource "aws_api_gateway_stage" "prod" {
 }
 
 resource "aws_route53_zone" "root" {
-  name = "${var.domain}."
+  name = "${var.base_domain}."
 }
 
 module "dns" {
   source       = "./modules/dns"
-  domain       = var.domain
+  domain       = var.base_domain
   name_servers = aws_route53_zone.root.name_servers
 }
 
@@ -188,7 +190,7 @@ resource "time_sleep" "allow_cert_propagation" {
 }
 resource "aws_api_gateway_domain_name" "root" {
   regional_certificate_arn = module.acm.certificate.arn
-  domain_name              = var.domain
+  domain_name              = local.full_domain
 
   depends_on = [
     time_sleep.allow_cert_propagation
@@ -230,7 +232,7 @@ resource "local_file" "local_environment_settings" {
   filename = "./.env"
   content  = <<-EOT
         TF_NAME_PREFIX=${local.name_prefix}
-        URL_PREFIX=${var.protocol}://${var.domain}/${var.base_path}
+        URL_PREFIX=${var.protocol}://${local.full_domain}/${var.base_path}
         CREATE_URL_ARN=${module.create_url.function.arn}
         LOAD_URL_ARN=${module.load_url.function.arn}
         KMS_ENCRYPTION_KEY=${module.kms.key_arn}
@@ -249,8 +251,8 @@ resource "aws_lambda_event_source_mapping" "ddb_to_publish_msg" {
 
 module "acm" {
   source     = "./modules/certificate_manager"
-  domain            = var.domain
-  zone_id           = aws_route53_zone.root.zone_id
+  domain     = local.full_domain
+  zone_id    = aws_route53_zone.root.zone_id
   depends_on = [module.dns]
 }
 

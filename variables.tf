@@ -3,8 +3,14 @@ variable "base_path" {
   default = "redirect"
 }
 
-variable "domain" {
-  type = string
+variable "base_domain" {
+  type        = string
+  description = "The domain which will have its zone created in Route53."
+}
+
+variable "project_subdomain" {
+  type        = string
+  description = "Subdomain of that the project should be hosted on. Prepended with a period to `base_domain` to create the full domain."
 }
 
 variable "protocol" {
