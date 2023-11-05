@@ -81,7 +81,7 @@ module "publish_msg" {
 
 # API Gateway
 resource "aws_api_gateway_rest_api" "redirect" {
-  name = "URL Redirect"
+  name = local.name_prefix
 }
 
 resource "aws_api_gateway_resource" "redirect" {
