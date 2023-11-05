@@ -1,5 +1,5 @@
 
-variable "name" {
+variable "topic_name" {
   type = string
 }
 
