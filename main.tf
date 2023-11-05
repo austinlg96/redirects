@@ -146,6 +146,12 @@ resource "aws_route53_zone" "root" {
   name = "${var.domain}."
 }
 
+module "dns" {
+  source       = "./modules/dns"
+  domain       = var.domain
+  name_servers = aws_route53_zone.root.name_servers
+}
+
 resource "aws_acm_certificate" "cert" {
   domain_name       = var.domain
   validation_method = "DNS"
