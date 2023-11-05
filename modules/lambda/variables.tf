@@ -35,3 +35,7 @@ variable "handler" {
   type    = string
   default = "main.lambda_hanlder"
 }
+
+variable "parent_module_root" {
+  type = string
+}

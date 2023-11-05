@@ -32,11 +32,12 @@ module "kms" {
 }
 
 module "create_url" {
-  source         = "./modules/lambda"
-  name_prefix    = local.name_prefix
-  friendly_name  = "create_url"
-  excluded_files = ["__pycache__/", "local_types.py"]
-  handler        = "create_url.lambda_handler"
+  source             = "./modules/lambda"
+  name_prefix        = local.name_prefix
+  friendly_name      = "create_url"
+  parent_module_root = path.module
+  excluded_files     = ["__pycache__/", "local_types.py"]
+  handler            = "create_url.lambda_handler"
   environment_vars = {
     URL_PREFIX         = "${var.protocol}://${local.full_domain}/${var.base_path}"
     KMS_ENCRYPTION_KEY = module.kms.key_arn
@@ -45,11 +46,12 @@ module "create_url" {
   }
 }
 module "load_url" {
-  source         = "./modules/lambda"
-  name_prefix    = local.name_prefix
-  friendly_name  = "load_url"
-  excluded_files = ["__pycache__/", "local_types.py"]
-  handler        = "load_url.lambda_handler"
+  source             = "./modules/lambda"
+  name_prefix        = local.name_prefix
+  friendly_name      = "load_url"
+  parent_module_root = path.module
+  excluded_files     = ["__pycache__/", "local_types.py"]
+  handler            = "load_url.lambda_handler"
   environment_vars = {
     KMS_ENCRYPTION_KEY = module.kms.key_arn
     DDB_TABLE_NAME     = module.ddb.table.name
@@ -59,11 +61,12 @@ module "load_url" {
 }
 
 module "publish_msg" {
-  source         = "./modules/lambda"
-  name_prefix    = local.name_prefix
-  friendly_name  = "publish_msg"
-  excluded_files = ["local_types.py"]
-  handler        = "publish_msg.lambda_handler"
+  source             = "./modules/lambda"
+  name_prefix        = local.name_prefix
+  friendly_name      = "publish_msg"
+  excluded_files     = ["local_types.py"]
+  parent_module_root = path.module
+  handler            = "publish_msg.lambda_handler"
   environment_vars = {
     DEBUGGING     = "False"
     SNS_TOPIC_ARN = module.sns.topic.arn

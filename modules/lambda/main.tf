@@ -1,8 +1,7 @@
 locals {
-  default_lambda_dir = "./aws/"
-  source_dir         = var.source_dir != null ? var.source_dir : "${local.default_lambda_dir}/${var.friendly_name}"
-  build_path         = var.build_path != null ? var.build_path : "./build/lambda/${var.friendly_name}.zip"
-  function_name      = var.name_prefix != "" ? "${var.name_prefix}-${var.friendly_name}" : var.friendly_name
+  source_dir    = var.source_dir != null ? var.source_dir : "${var.parent_module_root}/aws/${var.friendly_name}"
+  build_path    = var.build_path != null ? var.build_path : "./build/lambda/${var.friendly_name}.zip"
+  function_name = var.name_prefix != "" ? "${var.name_prefix}-${var.friendly_name}" : var.friendly_name
 }
 
 data "aws_iam_policy_document" "assume_role" {
