@@ -222,7 +222,7 @@ resource "aws_api_gateway_base_path_mapping" "main" {
 
 module "sns" {
   source                     = "./modules/sns"
-  name                       = "redirect-page-request-topic"
+  topic_name                 = "${local.name_prefix}-page_requested"
   publish_message_role_names = [module.publish_msg.role.name]
 }
 resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
@@ -233,6 +233,7 @@ resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
 resource "local_file" "local_environment_settings" {
   filename = "./.env"
   content  = <<-EOT
+        TF_NAME_PREFIX=${local.name_prefix}
         URL_PREFIX=${var.protocol}://${var.domain}/${var.base_path}
         CREATE_URL_ARN=${module.create_url.function.arn}
         LOAD_URL_ARN=${module.load_url.function.arn}
