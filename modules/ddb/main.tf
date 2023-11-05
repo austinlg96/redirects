@@ -23,7 +23,7 @@ resource "aws_dynamodb_table" "main" {
 
 module "put_item_perms" {
   source      = "../policy_attachment"
-  name        = "put_item-${var.table_name}"
+  policy_name = "put_item-${var.table_name}"
   description = "Allows adding items to the table."
   role_names  = var.put_item_role_names
   statements = [
@@ -37,7 +37,7 @@ module "put_item_perms" {
 
 module "stream_table_perms" {
   source      = "../policy_attachment"
-  name        = "stream_read-${var.table_name}"
+  policy_name = "stream_read-${var.table_name}"
   description = "Allows streaming the table changes."
   role_names  = var.stream_table_role_names
   statements = [

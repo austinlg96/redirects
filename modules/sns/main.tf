@@ -6,7 +6,7 @@ resource "aws_sns_topic" "main" {
 
 module "publish_perms" {
   source      = "../policy_attachment"
-  name        = "publish_to-${var.topic_name}"
+  policy_name = "publish_to-${var.topic_name}"
   description = "Allows publishing to the SNS stream."
   role_names  = var.publish_message_role_names
   statements = [

@@ -1,4 +1,4 @@
-variable "name" {
+variable "policy_name" {
   type = string
 }
 

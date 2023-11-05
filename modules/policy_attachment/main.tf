@@ -10,7 +10,7 @@ data "aws_iam_policy_document" "main" {
 }
 
 resource "aws_iam_policy" "main" {
-  name        = var.name
+  name        = var.policy_name
   description = var.description
   policy      = data.aws_iam_policy_document.main.json
 }
