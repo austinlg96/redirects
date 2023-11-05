@@ -56,8 +56,3 @@ variable "region" {
   type        = string
   description = "The AWS region that resources should be deployed to."
 }
-variable "deploy_stage_target" {
-  type        = string
-  default     = "all"
-  description = "Allows a staged roll out of infrastructure in situations whwere multiple applies are required."
-}

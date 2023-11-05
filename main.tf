@@ -1,15 +1,4 @@
 locals {
-  deploy_stage_names = [
-    "default", "delayed_certificate_proofs", "all"
-  ]
-
-  deploy_stage_name_to_int = { for i, v in local.deploy_stage_names : v => i }
-
-  deploy_stage_target_int = local.deploy_stage_name_to_int[tostring(var.deploy_stage_target)]
-
-  deploy_stages_set = toset(slice(local.deploy_stage_names, 0, local.deploy_stage_target_int + 1))
-}
-locals {
   base_default_tags = {
     project     = var.project_name
     environment = var.environment
@@ -193,10 +182,17 @@ module "dns" {
   name_servers = aws_route53_zone.root.name_servers
 }
 
+resource "time_sleep" "allow_cert_propagation" {
+  depends_on      = [module.acm]
+  create_duration = "30s"
+}
 resource "aws_api_gateway_domain_name" "root" {
   regional_certificate_arn = module.acm.certificate.arn
   domain_name              = var.domain
 
+  depends_on = [
+    time_sleep.allow_cert_propagation
+  ]
   endpoint_configuration {
     types = ["REGIONAL"]
   }
@@ -252,10 +248,10 @@ resource "aws_lambda_event_source_mapping" "ddb_to_publish_msg" {
 }
 
 module "acm" {
-  source            = "./modules/certificate_manager"
+  source     = "./modules/certificate_manager"
   domain            = var.domain
   zone_id           = aws_route53_zone.root.zone_id
-  deploy_stages_set = local.deploy_stages_set
+  depends_on = [module.dns]
 }
 
 module "ddb" {
