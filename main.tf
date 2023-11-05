@@ -14,7 +14,7 @@ module "create_url" {
   environment_vars = {
     URL_PREFIX         = "${var.protocol}://${var.domain}/${var.base_path}"
     KMS_ENCRYPTION_KEY = module.kms.key_arn
-    DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
+    DDB_TABLE_NAME     = module.ddb.table.name
     DEBUGGING          = "False"
   }
 }
@@ -25,7 +25,7 @@ module "load_url" {
   handler        = "load_url.lambda_handler"
   environment_vars = {
     KMS_ENCRYPTION_KEY = module.kms.key_arn
-    DDB_TABLE_NAME     = aws_dynamodb_table.redirects.name
+    DDB_TABLE_NAME     = module.ddb.table.name
     DEBUGGING          = "False"
     ERROR_DESTINATION  = var.error_destination
   }
@@ -38,7 +38,7 @@ module "publish_msg" {
   handler        = "publish_msg.lambda_handler"
   environment_vars = {
     DEBUGGING     = "False"
-    SNS_TOPIC_ARN = aws_sns_topic.page_request.arn
+    SNS_TOPIC_ARN = module.sns.topic.arn
   }
 }
 
@@ -179,59 +179,16 @@ resource "aws_api_gateway_base_path_mapping" "main" {
   domain_name = aws_api_gateway_domain_name.root.domain_name
 }
 
-resource "aws_sns_topic" "page_request" {
-  name = "redirect-page-request-topic"
+module "sns" {
+  source                     = "./modules/sns"
+  name                       = "redirect-page-request-topic"
+  publish_message_role_names = [module.publish_msg.role.name]
 }
-
 resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
-  topic_arn = aws_sns_topic.page_request.arn
+  topic_arn = module.sns.topic.arn
   protocol  = var.sns_sub_proto
   endpoint  = var.sns_sub_endpoint
 }
-
-resource "aws_dynamodb_table" "redirects" {
-  name             = "Redirects"
-  billing_mode     = "PAY_PER_REQUEST"
-  hash_key         = "HK"
-  range_key        = "SK"
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
-
-  attribute {
-    name = "HK"
-    type = "S"
-  }
-
-  attribute {
-    name = "SK"
-    type = "S"
-  }
-}
-
-data "aws_iam_policy_document" "ddb_put" {
-  statement {
-    effect    = "Allow"
-    actions   = ["dynamodb:PutItem"]
-    resources = [aws_dynamodb_table.redirects.arn]
-  }
-}
-
-resource "aws_iam_policy" "ddb_put" {
-  name        = "DDB_Put"
-  description = "Allows writing redirects to the redirect table."
-  policy      = data.aws_iam_policy_document.ddb_put.json
-}
-
-resource "aws_iam_role_policy_attachment" "create_fn_ddb" {
-  role       = module.create_url.role.name
-  policy_arn = aws_iam_policy.ddb_put.arn
-}
-
-resource "aws_iam_role_policy_attachment" "load_fn_ddb" {
-  role       = module.load_url.role.name
-  policy_arn = aws_iam_policy.ddb_put.arn
-}
-
 resource "local_file" "local_environment_settings" {
   filename = "./.env"
   content  = <<-EOT
@@ -239,68 +196,28 @@ resource "local_file" "local_environment_settings" {
         CREATE_URL_ARN=${module.create_url.function.arn}
         LOAD_URL_ARN=${module.load_url.function.arn}
         KMS_ENCRYPTION_KEY=${module.kms.key_arn}
-        DDB_TABLE_NAME=${aws_dynamodb_table.redirects.name}
+        DDB_TABLE_NAME=${module.ddb.table.name}
         EOT
 }
-
-
-data "aws_iam_policy_document" "ddb_stream_read" {
-  statement {
-    effect = "Allow"
-    actions = [
-      "dynamodb:GetRecords",
-      "dynamodb:GetShardIterator",
-      "dynamodb:DescribeStream",
-      "dynamodb:ListStreams"
-    ]
-    resources = [aws_dynamodb_table.redirects.stream_arn]
-  }
-}
-
-resource "aws_iam_policy" "ddb_stream_read" {
-  name        = "DDB_Stream_Read"
-  description = "Allows reading the redirect table's stream."
-  policy      = data.aws_iam_policy_document.ddb_stream_read.json
-}
-
-resource "aws_iam_role_policy_attachment" "publish_msg_ddb_stream" {
-  role       = module.publish_msg.role.name
-  policy_arn = aws_iam_policy.ddb_stream_read.arn
-}
-
 resource "aws_lambda_event_source_mapping" "ddb_to_publish_msg" {
-  event_source_arn  = aws_dynamodb_table.redirects.stream_arn
+  event_source_arn  = module.ddb.table.stream_arn
   function_name     = module.publish_msg.function.arn
   starting_position = "LATEST"
 
   depends_on = [
-    aws_iam_role_policy_attachment.publish_msg_ddb_stream
+    module.ddb
   ]
-}
-
-data "aws_iam_policy_document" "sns_pub" {
-  statement {
-    effect = "Allow"
-    actions = [
-      "SNS:Publish"
-    ]
-    resources = [aws_sns_topic.page_request.arn]
-  }
-}
-
-resource "aws_iam_policy" "sns_pub" {
-  name        = "SNS_Pub"
-  description = "Allows publishing to the SNS stream."
-  policy      = data.aws_iam_policy_document.sns_pub.json
-}
-
-resource "aws_iam_role_policy_attachment" "publish_msg_sns_topic" {
-  role       = module.publish_msg.role.name
-  policy_arn = aws_iam_policy.sns_pub.arn
 }
 
 module "acm" {
   source  = "./modules/certificate_manager"
   domain  = var.domain
   zone_id = aws_route53_zone.root.zone_id
+}
+
+module "ddb" {
+  source                  = "./modules/ddb"
+  name                    = "Requests"
+  put_item_role_names     = [module.load_url.role.name, module.create_url.role.name]
+  stream_table_role_names = [module.publish_msg.role.name]
 }
