@@ -152,27 +152,8 @@ module "dns" {
   name_servers = aws_route53_zone.root.name_servers
 }
 
-resource "aws_acm_certificate" "cert" {
-  domain_name       = var.domain
-  validation_method = "DNS"
-}
-
-resource "aws_route53_record" "cert_validation" {
-  for_each = { for index, option in aws_acm_certificate.cert.domain_validation_options : option.resource_record_name => option }
-  name     = each.value.resource_record_name
-  type     = each.value.resource_record_type
-  zone_id  = aws_route53_zone.root.id
-  records  = [each.value.resource_record_value]
-  ttl      = 60
-}
-
-resource "aws_acm_certificate_validation" "cert" {
-  certificate_arn         = aws_acm_certificate.cert.arn
-  validation_record_fqdns = [for cv in aws_route53_record.cert_validation : cv.fqdn]
-}
-
 resource "aws_api_gateway_domain_name" "root" {
-  regional_certificate_arn = aws_acm_certificate_validation.cert.certificate_arn
+  regional_certificate_arn = module.acm.certificate.arn
   domain_name              = var.domain
 
   endpoint_configuration {
@@ -316,4 +297,10 @@ resource "aws_iam_policy" "sns_pub" {
 resource "aws_iam_role_policy_attachment" "publish_msg_sns_topic" {
   role       = module.publish_msg.role.name
   policy_arn = aws_iam_policy.sns_pub.arn
+}
+
+module "acm" {
+  source  = "./modules/certificate_manager"
+  domain  = var.domain
+  zone_id = aws_route53_zone.root.zone_id
 }
