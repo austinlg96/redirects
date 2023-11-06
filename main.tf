@@ -233,7 +233,7 @@ resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
   endpoint  = var.sns_sub_endpoint
 }
 resource "local_file" "local_environment_settings" {
-  filename = "./.env"
+  filename = "${path.module}/.env"
   content  = <<-EOT
         TF_NAME_PREFIX=${local.name_prefix}
         URL_PREFIX=${var.protocol}://${local.full_domain}/${var.base_path}
